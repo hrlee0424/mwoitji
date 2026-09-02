@@ -1,183 +1,177 @@
-import 'package:path/path.dart' as path;
-import 'package:sqflite/sqflite.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/food_item.dart';
 
 class DatabaseService {
-  DatabaseService._();
+  DatabaseService._({FirebaseFirestore? firestore})
+    : _firestoreOverride = firestore;
 
   static final DatabaseService instance = DatabaseService._();
-  static const _databaseName = 'mwoitji.db';
-  static const _databaseVersion = 1;
-  static const _foodTable = 'foods';
-  static const _settingsTable = 'app_settings';
 
-  Future<Database>? _databaseFuture;
+  final FirebaseFirestore? _firestoreOverride;
+  String? _cachedUserId;
+  Future<String>? _activeFridgeIdFuture;
 
-  Future<Database> get database => _databaseFuture ??= _openDatabase();
+  FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
 
-  Future<Database> _openDatabase() async {
-    final databasePath = path.join(await getDatabasesPath(), _databaseName);
-    return openDatabase(
-      databasePath,
-      version: _databaseVersion,
-      onOpen: _removeLegacySamples,
-      onCreate: (database, _) async {
-        await database.execute('''
-          CREATE TABLE $_foodTable (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            expiry_date INTEGER,
-            purchase_date INTEGER NOT NULL,
-            storage TEXT NOT NULL,
-            category TEXT NOT NULL,
-            manufacture_date INTEGER,
-            amount_value REAL NOT NULL DEFAULT 1,
-            amount_unit TEXT NOT NULL DEFAULT 'piece',
-            status TEXT NOT NULL,
-            completed_at INTEGER
-          )
-        ''');
-        await database.execute('''
-          CREATE TABLE $_settingsTable (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-          )
-        ''');
-      },
-      onDowngrade: onDatabaseDowngradeDelete,
-    );
+  User get _user {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('로그인이 필요합니다.');
+    return user;
   }
 
-  Future<void> _removeLegacySamples(Database database) async {
-    const cleanupKey = 'legacy_samples_removed';
-    final cleaned = await database.query(
-      _settingsTable,
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [cleanupKey],
-      limit: 1,
-    );
-    if (cleaned.isNotEmpty) return;
+  DocumentReference<Map<String, dynamic>> get _userDocument =>
+      _firestore.collection('users').doc(_user.uid);
 
-    await database.transaction((transaction) async {
-      await transaction.delete(
-        _foodTable,
-        where:
-            "(id = 1 AND name = '우유') OR "
-            "(id = 2 AND name = '두부') OR "
-            "(id = 3 AND name = '냉동 만두')",
-      );
-      await transaction.insert(_settingsTable, {
-        'key': cleanupKey,
-        'value': 'true',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    });
+  CollectionReference<Map<String, dynamic>> get _settings =>
+      _userDocument.collection('app_settings');
+
+  Future<String> _activeFridgeId() {
+    final user = _user;
+    if (_cachedUserId != user.uid) {
+      _cachedUserId = user.uid;
+      _activeFridgeIdFuture = null;
+    }
+    return _activeFridgeIdFuture ??= _loadOrCreatePersonalFridge(user);
   }
+
+  void invalidateActiveFridge() {
+    _activeFridgeIdFuture = null;
+  }
+
+  Future<String> _loadOrCreatePersonalFridge(User user) async {
+    final userReference = _firestore.collection('users').doc(user.uid);
+    final userSnapshot = await userReference.get();
+    final savedFridgeId = userSnapshot.data()?['activeFridgeId'];
+    if (savedFridgeId is String && savedFridgeId.isNotEmpty) {
+      return savedFridgeId;
+    }
+
+    final fridgeId = user.uid;
+    final fridgeReference = _firestore.collection('fridges').doc(fridgeId);
+    final batch = _firestore.batch();
+    batch.set(userReference, {
+      'activeFridgeId': fridgeId,
+      'displayName': user.displayName,
+      'email': user.email,
+      'photoUrl': user.photoURL,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    batch.set(fridgeReference, {
+      'name': '내 냉장고',
+      'ownerId': user.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    batch.set(fridgeReference.collection('members').doc(user.uid), {
+      'role': 'owner',
+      'displayName': user.displayName,
+      'email': user.email,
+      'joinedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await batch.commit();
+    return fridgeId;
+  }
+
+  Future<CollectionReference<Map<String, dynamic>>> _foods() async => _firestore
+      .collection('fridges')
+      .doc(await _activeFridgeId())
+      .collection('foods');
 
   Future<List<FoodItem>> getFoods() async {
-    final db = await database;
-    final rows = await db.query(
-      _foodTable,
-      orderBy: 'expiry_date IS NULL ASC, expiry_date ASC',
-    );
-    return rows.map(_fromMap).toList();
+    final snapshot = await (await _foods()).get();
+    return snapshot.docs.map(_fromDocument).toList();
   }
 
-  Future<void> insertFood(FoodItem food) async {
-    final db = await database;
-    await db.insert(
-      _foodTable,
-      _toMap(food),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+  Future<void> insertFood(FoodItem food) async =>
+      (await _foods()).doc(food.id.toString()).set(_toMap(food));
+
+  Future<void> insertFoods(List<FoodItem> foods) async {
+    if (foods.isEmpty) return;
+    final collection = await _foods();
+    final batch = _firestore.batch();
+    for (final food in foods) {
+      batch.set(collection.doc(food.id.toString()), _toMap(food));
+    }
+    await batch.commit();
   }
 
-  Future<void> updateFood(FoodItem food) async {
-    final db = await database;
-    await db.update(
-      _foodTable,
-      _toMap(food),
-      where: 'id = ?',
-      whereArgs: [food.id],
-    );
-  }
+  Future<void> updateFood(FoodItem food) async =>
+      (await _foods()).doc(food.id.toString()).set(_toMap(food));
 
-  Future<void> deleteFood(int id) async {
-    final db = await database;
-    await db.delete(_foodTable, where: 'id = ?', whereArgs: [id]);
-  }
+  Future<void> deleteFood(int id) async =>
+      (await _foods()).doc(id.toString()).delete();
 
   Future<String?> getSetting(String key) async {
-    final db = await database;
-    final rows = await db.query(
-      _settingsTable,
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [key],
-      limit: 1,
-    );
-    return rows.isEmpty ? null : rows.first['value']! as String;
+    final snapshot = await _settings.doc(key).get();
+    return snapshot.data()?['value'] as String?;
   }
 
-  Future<void> saveSetting(String key, String value) async {
-    final db = await database;
-    await db.insert(_settingsTable, {
-      'key': key,
-      'value': value,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
+  Future<void> saveSetting(String key, String value) =>
+      _settings.doc(key).set({'value': value});
 
-  Map<String, Object?> _toMap(FoodItem food) => {
+  Map<String, dynamic> _toMap(FoodItem food) => {
     'id': food.id,
     'name': food.name,
-    'expiry_date': food.expiryDate?.millisecondsSinceEpoch,
-    'purchase_date': food.purchaseDate.millisecondsSinceEpoch,
+    'expiryDate': _timestamp(food.expiryDate),
+    'purchaseDate': Timestamp.fromDate(food.purchaseDate),
     'storage': food.storage.name,
     'category': food.category.name,
-    'manufacture_date': food.manufactureDate?.millisecondsSinceEpoch,
-    'amount_value': food.amountValue,
-    'amount_unit': food.amountUnit.name,
+    'manufactureDate': _timestamp(food.manufactureDate),
+    'amountValue': food.amountValue,
+    'amountUnit': food.amountUnit.name,
     'status': food.status.name,
-    'completed_at': food.completedAt?.millisecondsSinceEpoch,
+    'completedAt': _timestamp(food.completedAt),
+    'imageUrl': food.imageUrl,
   };
 
-  FoodItem _fromMap(Map<String, Object?> row) => FoodItem(
-    id: row['id']! as int,
-    name: row['name']! as String,
-    expiryDate: _dateFromDatabase(row['expiry_date']),
-    purchaseDate: DateTime.fromMillisecondsSinceEpoch(
-      row['purchase_date']! as int,
-    ),
-    storage: _enumByName(
-      StorageType.values,
-      row['storage']! as String,
-      StorageType.fridge,
-    ),
-    category: _enumByName(
-      FoodCategory.values,
-      row['category']! as String,
-      FoodCategory.other,
-    ),
-    manufactureDate: _dateFromDatabase(row['manufacture_date']),
-    amountValue: (row['amount_value']! as num).toDouble(),
-    amountUnit: _enumByName(
-      FoodUnit.values,
-      row['amount_unit']! as String,
-      FoodUnit.piece,
-    ),
-    status: _enumByName(
-      FoodStatus.values,
-      row['status']! as String,
-      FoodStatus.stored,
-    ),
-    completedAt: _dateFromDatabase(row['completed_at']),
-  );
+  FoodItem _fromDocument(QueryDocumentSnapshot<Map<String, dynamic>> document) {
+    final data = document.data();
+    return FoodItem(
+      id: _intValue(data['id']) ?? int.parse(document.id),
+      name: data['name'] as String,
+      expiryDate: _dateValue(data['expiryDate']),
+      purchaseDate: _dateValue(data['purchaseDate'])!,
+      storage: _enumByName(
+        StorageType.values,
+        data['storage'] as String?,
+        StorageType.fridge,
+      ),
+      category: _enumByName(
+        FoodCategory.values,
+        data['category'] as String?,
+        FoodCategory.other,
+      ),
+      manufactureDate: _dateValue(data['manufactureDate']),
+      amountValue: (data['amountValue'] as num? ?? 1).toDouble(),
+      amountUnit: _enumByName(
+        FoodUnit.values,
+        data['amountUnit'] as String?,
+        FoodUnit.piece,
+      ),
+      status: _enumByName(
+        FoodStatus.values,
+        data['status'] as String?,
+        FoodStatus.stored,
+      ),
+      completedAt: _dateValue(data['completedAt']),
+      imageUrl: data['imageUrl'] as String?,
+    );
+  }
 
-  DateTime? _dateFromDatabase(Object? value) =>
-      value == null ? null : DateTime.fromMillisecondsSinceEpoch(value as int);
+  Timestamp? _timestamp(DateTime? value) =>
+      value == null ? null : Timestamp.fromDate(value);
 
-  T _enumByName<T extends Enum>(List<T> values, String name, T fallback) {
+  DateTime? _dateValue(Object? value) => switch (value) {
+    Timestamp timestamp => timestamp.toDate(),
+    int milliseconds => DateTime.fromMillisecondsSinceEpoch(milliseconds),
+    _ => null,
+  };
+
+  int? _intValue(Object? value) => value is num ? value.toInt() : null;
+
+  T _enumByName<T extends Enum>(List<T> values, String? name, T fallback) {
     for (final value in values) {
       if (value.name == name) return value;
     }

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "538433422925",
+    "project_id": "mwoitji",
+    "storage_bucket": "mwoitji.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:538433422925:android:0af4f056a1acfb91023e04",
+        "android_client_info": {
+          "package_name": "com.mwoitji.mwoitji"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "538433422925-12f56dbpmhgfjd93fl780hv0vraopd3a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAf4Ja_HtTMe2qPZUZaQEoyUXP2IsQg3Es"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "538433422925-12f56dbpmhgfjd93fl780hv0vraopd3a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

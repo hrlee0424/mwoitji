@@ -20,22 +20,8 @@ class FridgeOverview extends StatelessWidget {
   Widget build(BuildContext context) {
     final freezer =
         foods.where((food) => food.storage == StorageType.freezer).toList();
-    final vegetables =
-        foods
-            .where(
-              (food) =>
-                  food.storage == StorageType.fridge &&
-                  food.category == FoodCategory.produce,
-            )
-            .toList();
     final fridge =
-        foods
-            .where(
-              (food) =>
-                  food.storage == StorageType.fridge &&
-                  food.category != FoodCategory.produce,
-            )
-            .toList();
+        foods.where((food) => food.storage == StorageType.fridge).toList();
     final room =
         foods.where((food) => food.storage == StorageType.room).toList();
 
@@ -81,29 +67,17 @@ class FridgeOverview extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               _FridgeZone(
-                title: '채소칸',
-                icon: Icons.eco_outlined,
-                foods: vegetables,
+                title: '실온',
+                icon: Icons.inventory_2_outlined,
+                foods: room,
                 backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                 bottom: true,
                 onFoodTap: onFoodTap,
-                onShowAll: () => _showZoneFoods(context, '채소칸', vegetables),
+                onShowAll: () => _showZoneFoods(context, '실온', room),
               ),
             ],
           ),
         ),
-        if (room.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _FridgeZone(
-            title: '실온 보관',
-            icon: Icons.inventory_2_outlined,
-            foods: room,
-            backgroundColor: Theme.of(context).colorScheme.tertiaryContainer,
-            standalone: true,
-            onFoodTap: onFoodTap,
-            onShowAll: () => _showZoneFoods(context, '실온 보관', room),
-          ),
-        ],
       ],
     );
   }
@@ -171,7 +145,6 @@ class _FridgeZone extends StatelessWidget {
     required this.onShowAll,
     this.top = false,
     this.bottom = false,
-    this.standalone = false,
   });
 
   static const _maxSlots = 9;
@@ -183,7 +156,6 @@ class _FridgeZone extends StatelessWidget {
   final VoidCallback onShowAll;
   final bool top;
   final bool bottom;
-  final bool standalone;
 
   @override
   Widget build(BuildContext context) {
@@ -197,8 +169,8 @@ class _FridgeZone extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(top || standalone ? 16 : 8),
-          bottom: Radius.circular(bottom || standalone ? 16 : 8),
+          top: Radius.circular(top ? 16 : 8),
+          bottom: Radius.circular(bottom ? 16 : 8),
         ),
       ),
       child: Column(

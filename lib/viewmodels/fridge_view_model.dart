@@ -88,6 +88,23 @@ class FridgeViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> addFoods(List<FoodItem> foods) async {
+    if (foods.isEmpty) return;
+    _foods.addAll(foods);
+    _nextId += foods.length;
+    _notify();
+    try {
+      await _databaseService.insertFoods(foods);
+      _persistenceError = null;
+    } catch (_) {
+      _foods.removeWhere((food) => foods.any((added) => added.id == food.id));
+      _nextId -= foods.length;
+      _persistenceError = '식품을 한 번에 저장하지 못했어요.';
+      _notify();
+      rethrow;
+    }
+  }
+
   Future<void> updateFood(FoodItem food) async {
     final index = _foods.indexWhere((item) => item.id == food.id);
     if (index < 0) return;

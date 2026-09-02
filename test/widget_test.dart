@@ -4,6 +4,40 @@ import 'package:mwoitji/main.dart';
 import 'package:mwoitji/widgets/fridge_overview.dart';
 
 void main() {
+  testWidgets('Google 로그인 화면을 표시한다', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+
+    expect(find.text('Google로 계속하기'), findsOneWidget);
+    expect(find.byKey(const Key('googleSignInButton')), findsOneWidget);
+  });
+
+  testWidgets('설정에서 냉장고 초대 코드를 입력할 수 있다', (tester) async {
+    await tester.pumpWidget(const MwoitjiApp());
+
+    await tester.tap(find.text('설정'));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('joinFridgeButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('joinFridgeButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('냉장고 참여'), findsOneWidget);
+    expect(find.byKey(const Key('fridgeInviteCodeField')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('fridgeInviteCodeField')),
+      'AB12CD',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('confirmJoinFridgeButton')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
   testWidgets('처음에는 빈 냉장고와 핵심 탭을 표시한다', (tester) async {
     await tester.pumpWidget(const MwoitjiApp());
 
@@ -32,9 +66,41 @@ void main() {
     expect(find.text('뭐있지'), findsOneWidget);
   });
 
+  testWidgets('통계 탭에 이번 달 핵심 지표를 표시한다', (tester) async {
+    await tester.pumpWidget(const MwoitjiApp());
+
+    await tester.tap(find.text('통계'));
+    await tester.pump();
+
+    expect(find.textContaining('월 소비 리포트'), findsOneWidget);
+    expect(find.text('다 먹음'), findsOneWidget);
+    expect(find.text('버림'), findsOneWidget);
+    expect(find.text('폐기율'), findsOneWidget);
+    expect(find.text('7일 이내'), findsOneWidget);
+    expect(find.text('곧 소비해야 해요'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('stats-다 먹음')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('이번 달 다 먹음'), findsOneWidget);
+    expect(find.text('이번 달에 다 먹은 식품이 없어요.'), findsOneWidget);
+  });
+
+  testWidgets('홈의 소비기한 임박 카드를 누르면 임박 목록을 연다', (tester) async {
+    await tester.pumpWidget(const MwoitjiApp());
+
+    await tester.tap(find.byKey(const Key('urgentFoodsCard')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('소비기한 임박'), findsOneWidget);
+    expect(find.text('소비기한이 임박한 식품이 없어요.'), findsOneWidget);
+  });
+
   testWidgets('식품 등록 화면을 열고 입력값을 검증한다', (tester) async {
     await tester.pumpWidget(const MwoitjiApp());
     await tester.tap(find.byKey(const Key('addFoodButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('openManualFoodEntry')));
     await tester.pumpAndSettle();
 
     expect(find.text('식품 등록'), findsOneWidget);
@@ -46,6 +112,23 @@ void main() {
     await tester.tap(find.text('저장'));
     await tester.pump();
     expect(find.text('식품명을 입력해 주세요.'), findsOneWidget);
+  });
+
+  testWidgets('식품 등록 버튼에서 영수증 일괄 등록 화면을 연다', (tester) async {
+    await tester.pumpWidget(const MwoitjiApp());
+    await tester.tap(find.byKey(const Key('addFoodButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('직접 등록'), findsOneWidget);
+    expect(find.text('영수증으로 한 번에 등록'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('openReceiptFoodEntry')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('영수증으로 등록'), findsOneWidget);
+    expect(find.byKey(const Key('scanReceiptButton')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('addReceiptItemButton')));
+    await tester.pump();
+    expect(find.byKey(const Key('receiptFoodNameField-0')), findsOneWidget);
   });
 
   testWidgets('수정 화면에 기존 식품 값을 채운다', (tester) async {
@@ -120,6 +203,8 @@ void main() {
     await tester.pumpWidget(const MwoitjiApp());
     await tester.tap(find.byKey(const Key('addFoodButton')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('openManualFoodEntry')));
+    await tester.pumpAndSettle();
 
     final expiryTile = find.text('소비기한 (선택)');
     await tester.ensureVisible(expiryTile);
@@ -151,6 +236,8 @@ void main() {
     await tester.pumpWidget(const MwoitjiApp());
     await tester.tap(find.byKey(const Key('addFoodButton')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('openManualFoodEntry')));
+    await tester.pumpAndSettle();
 
     final manufactureTile = find.text('제조일 (선택)');
     await tester.ensureVisible(manufactureTile);
@@ -172,6 +259,8 @@ void main() {
   testWidgets('구매일 입력창에는 오늘 날짜를 기본으로 보여준다', (tester) async {
     await tester.pumpWidget(const MwoitjiApp());
     await tester.tap(find.byKey(const Key('addFoodButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('openManualFoodEntry')));
     await tester.pumpAndSettle();
 
     final purchaseTile = find.text('구매일');
@@ -209,6 +298,21 @@ void main() {
 ''');
 
     expect(names, ['서울우유', '나100%']);
+  });
+
+  test('영수증 OCR에서 가격과 결제 문구를 제외하고 여러 상품명을 추출한다', () {
+    final items = extractReceiptItems('''
+이마트 영수증
+사업자번호 123-45-67890
+1 서울우유 2 5,000
+2 친환경 대파 1,980
+3 신선한 계란 3 2,300 6,900
+결제합계 13,880
+2026-09-02 18:30
+''');
+
+    expect(items.map((item) => item.name), ['서울우유', '친환경 대파', '신선한 계란']);
+    expect(items.map((item) => item.quantity), [2, 1, 3]);
   });
 
   test('소비기한 없는 식품을 표현할 수 있다', () {
@@ -263,6 +367,22 @@ void main() {
     expect(fullyConsumed.amountValue, 0);
     expect(fullyConsumed.status, FoodStatus.consumed);
     expect(fullyConsumed.completedAt, consumedAt);
+  });
+
+  test('식품 이미지 주소를 보유량 변경 후에도 유지한다', () {
+    final food = FoodItem(
+      id: 20,
+      name: '우유',
+      expiryDate: DateTime(2026, 9, 15),
+      purchaseDate: DateTime(2026, 9, 1),
+      storage: StorageType.fridge,
+      category: FoodCategory.dairy,
+      amountValue: 1000,
+      amountUnit: FoodUnit.milliliter,
+      imageUrl: 'https://example.com/foods/milk.jpg',
+    );
+
+    expect(food.useAmount(200).imageUrl, food.imageUrl);
   });
 
   test('테마 기본값은 프레시이고 스타일별 색상이 다르다', () {

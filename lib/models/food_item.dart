@@ -69,6 +69,7 @@ class FoodItem {
     this.amountUnit = FoodUnit.piece,
     this.status = FoodStatus.stored,
     this.completedAt,
+    this.imageUrl,
   });
 
   final int id;
@@ -82,6 +83,7 @@ class FoodItem {
   final FoodUnit amountUnit;
   FoodStatus status;
   DateTime? completedAt;
+  final String? imageUrl;
 
   int? get daysLeft {
     final date = expiryDate;
@@ -117,6 +119,7 @@ class FoodItem {
       amountUnit: amountUnit,
       status: fullyConsumed ? FoodStatus.consumed : status,
       completedAt: fullyConsumed ? (usedAt ?? DateTime.now()) : completedAt,
+      imageUrl: imageUrl,
     );
   }
 }

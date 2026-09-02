@@ -92,6 +92,7 @@ class AddFoodViewModel extends ChangeNotifier {
     amountUnit: amountUnit,
     status: _initialFood?.status ?? FoodStatus.stored,
     completedAt: _initialFood?.completedAt,
+    imageUrl: _initialFood?.imageUrl,
   );
 
   @override
